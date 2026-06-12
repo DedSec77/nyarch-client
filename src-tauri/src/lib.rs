@@ -32,15 +32,18 @@ fn show_main_window(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // ── Linux / WebKitGTK rendering tuning ───────────────────────────────
-    // WebKitGTK can render badly on Linux depending on the GPU/compositor:
-    //   * On some wlroots Wayland compositors (Hyprland, Sway, river) the
-    //     DMABUF renderer fails ("Error 71 (Protocol error)" / GBM buffer).
-    //   * On systems where GPU compositing misbehaves, scrolling and
-    //     animations stutter badly (the "AppImage lag").
-    // We let the user override any of these via real env vars; we only set a
-    // sane default when they haven't. NVIDIA + Wayland is the usual culprit,
-    // so we also nudge GBM/EGL there.
+    // ── Linux / WebKitGTK compatibility ──────────────────────────────────
+    // WebKitGTK is the only WebView on Linux and is fragile in two ways:
+    //   * Native Wayland (especially NVIDIA + wlroots compositors like
+    //     Hyprland/Sway) crashes the DMABUF renderer and/or stutters badly.
+    //   * Inside an AppImage its sandboxed web process often fails to start
+    //     (white screen), because bubblewrap can't find its helpers.
+    // The fix that actually works on NVIDIA+Hyprland is to run the WebView
+    // through XWayland (GDK_BACKEND=x11) with the DMABUF renderer off, and to
+    // disable the WebKit sandbox when running from an AppImage.
+    // Everything is overridable: if the user already exported a value we keep
+    // it, so power users with working GPU compositing aren't forced onto the
+    // compatibility path.
     #[cfg(target_os = "linux")]
     {
         let set_default = |k: &str, v: &str| {
@@ -48,12 +51,28 @@ pub fn run() {
                 std::env::set_var(k, v);
             }
         };
-        // Avoid the DMABUF crash on wlroots compositors.
+
+        // Force the more reliable rendering path on Wayland/NVIDIA.
+        let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE")
+                .map(|v| v.eq_ignore_ascii_case("wayland"))
+                .unwrap_or(false);
+        if is_wayland {
+            // Route the WebView through XWayland — WebKitGTK is far more stable
+            // there on NVIDIA than on native Wayland. (The native window can
+            // stay Wayland; this only affects the GTK/WebKit backend.)
+            set_default("GDK_BACKEND", "x11");
+        }
+        // Avoid the DMABUF crash + GBM buffer failures (required on NVIDIA).
         set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        // If scrolling/animation still stutters, compositing mode is usually
-        // the cause; this forces the more compatible path. Override by exporting
-        // WEBKIT_DISABLE_COMPOSITING_MODE=0 if your GPU handles it well.
+        // Reduce scroll/animation stutter when GPU compositing misbehaves.
         set_default("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+
+        // Inside an AppImage the WebKit sandbox usually can't start its helper
+        // process -> white screen. Detect the AppImage runtime and turn it off.
+        if std::env::var_os("APPIMAGE").is_some() {
+            set_default("WEBKIT_FORCE_SANDBOX", "0");
+        }
     }
 
     tauri::Builder::default()
