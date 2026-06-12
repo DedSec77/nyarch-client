@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Comment as CommentType } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { Icon } from '@/components/ui/Icon'
+import { AdminBadge } from '@/components/ui/AdminBadge'
 import { VoteControl } from '@/components/ui/VoteControl'
 import { timeAgo } from '@/lib/utils'
 import { castVote } from '@/lib/api'
@@ -17,20 +18,34 @@ interface CommentProps {
     imageFile?: File | null,
   ) => Promise<{ error: string | null } | void>
   onVoteLocal: (commentId: string, v: -1 | 1) => void
+  onEdit?: (commentId: string, body: string) => Promise<{ error: string | null }>
+  onDelete?: (commentId: string) => Promise<void>
 }
 
 const DEPTH_COLORS = ['#00ff9c', '#22d3ee', '#ff2fb9', '#ffb000', '#ff3b5c']
 
-export function Comment({ comment, depth, onReply, onVoteLocal }: CommentProps) {
-  const { user } = useAuth()
+export function Comment({ comment, depth, onReply, onVoteLocal, onEdit, onDelete }: CommentProps) {
+  const { user, profile } = useAuth()
   const [replying, setReplying] = useState(false)
   const [text, setText] = useState('')
   const [collapsed, setCollapsed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [image, setImage] = useState<{ file: File; preview: string } | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState(comment.body)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const accent = DEPTH_COLORS[depth % DEPTH_COLORS.length]
+  const isOwner = user?.id === comment.author_id
+  const canDelete = isOwner || profile?.is_admin
+
+  async function saveEdit() {
+    if (!onEdit) return
+    setBusy(true)
+    const res = await onEdit(comment.id, editText)
+    setBusy(false)
+    if (!res.error) setEditing(false)
+  }
 
   function vote(v: -1 | 1) {
     if (!user) return
@@ -58,7 +73,7 @@ export function Comment({ comment, depth, onReply, onVoteLocal }: CommentProps) 
   return (
     <div className="mt-3">
       <div
-        className="border-l-2 pl-3"
+        className="mono-border border-l-2 pl-3"
         style={{ borderColor: depth === 0 ? 'transparent' : accent + '55' }}
       >
         <div className="flex items-center gap-2 text-xs text-ink-faint">
@@ -69,7 +84,9 @@ export function Comment({ comment, depth, onReply, onVoteLocal }: CommentProps) 
             <Avatar src={comment.author?.avatar_url} name={comment.author?.display_name ?? '?'} size={18} />
             <span className="text-ink-dim">@{comment.author?.username}</span>
           </Link>
+          {comment.author?.is_admin && <AdminBadge size="sm" />}
           <span>· {timeAgo(comment.created_at)} ago</span>
+          {comment.edited_at && <span className="italic">· edited</span>}
           <span>·</span>
           <span className={comment.score && comment.score > 0 ? 'text-neon-green' : ''}>
             {comment.score ?? 0} pts
@@ -78,8 +95,34 @@ export function Comment({ comment, depth, onReply, onVoteLocal }: CommentProps) 
 
         {!collapsed && (
           <>
-            {comment.body && (
-              <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{comment.body}</p>
+            {editing ? (
+              <div className="mt-1.5">
+                <textarea
+                  autoFocus
+                  rows={2}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="input resize-y text-sm"
+                />
+                <div className="mt-1 flex gap-2">
+                  <button onClick={saveEdit} disabled={busy} className="btn btn-primary py-1 text-xs">
+                    {busy ? '…' : 'save'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditing(false)
+                      setEditText(comment.body)
+                    }}
+                    className="btn btn-ghost py-1 text-xs"
+                  >
+                    cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              comment.body && (
+                <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{comment.body}</p>
+              )
             )}
             {comment.image_url && (
               <img
@@ -100,6 +143,27 @@ export function Comment({ comment, depth, onReply, onVoteLocal }: CommentProps) 
               {user && (
                 <button onClick={() => setReplying((r) => !r)} className="flex items-center gap-1 hover:text-neon-cyan">
                   <Icon name="reply" size={13} /> reply
+                </button>
+              )}
+              {isOwner && onEdit && !editing && (
+                <button
+                  onClick={() => {
+                    setEditText(comment.body)
+                    setEditing(true)
+                  }}
+                  className="flex items-center gap-1 hover:text-neon-cyan"
+                >
+                  <Icon name="edit" size={13} /> edit
+                </button>
+              )}
+              {canDelete && onDelete && (
+                <button
+                  onClick={async () => {
+                    if (confirm('Delete this comment?')) await onDelete(comment.id)
+                  }}
+                  className="flex items-center gap-1 hover:text-neon-red"
+                >
+                  <Icon name="trash" size={13} /> del
                 </button>
               )}
             </div>
@@ -159,7 +223,15 @@ export function Comment({ comment, depth, onReply, onVoteLocal }: CommentProps) 
             )}
 
             {comment.replies?.map((r) => (
-              <Comment key={r.id} comment={r} depth={depth + 1} onReply={onReply} onVoteLocal={onVoteLocal} />
+              <Comment
+                key={r.id}
+                comment={r}
+                depth={depth + 1}
+                onReply={onReply}
+                onVoteLocal={onVoteLocal}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
             ))}
           </>
         )}

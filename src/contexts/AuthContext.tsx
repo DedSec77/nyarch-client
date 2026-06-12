@@ -56,6 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    // mark offline before the session is torn down
+    try {
+      await supabase.rpc('go_offline')
+    } catch {
+      /* RPC may not exist yet; ignore */
+    }
     await supabase.auth.signOut()
     setProfile(null)
   }

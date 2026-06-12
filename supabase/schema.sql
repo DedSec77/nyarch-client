@@ -16,8 +16,17 @@ create table if not exists public.profiles (
   avatar_url   text,
   banner_url   text,
   bio          text check (char_length(bio) <= 500),
+  is_admin     boolean not null default false,
+  last_seen    timestamptz,
+  presence     text not null default 'offline' check (presence in ('online','offline')),
   created_at   timestamptz not null default now()
 );
+
+-- in case profiles already existed
+alter table public.profiles add column if not exists is_admin  boolean not null default false;
+alter table public.profiles add column if not exists last_seen timestamptz;
+alter table public.profiles add column if not exists presence text not null default 'offline'
+  check (presence in ('online','offline'));
 
 alter table public.profiles enable row level security;
 
@@ -61,6 +70,61 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Prevent users from granting themselves admin via a normal profile update.
+create or replace function public.guard_admin_flag()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.is_admin is distinct from old.is_admin then
+    if not exists (select 1 from public.profiles where id = auth.uid() and is_admin) then
+      new.is_admin := old.is_admin;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_admin_flag_trg on public.profiles;
+create trigger guard_admin_flag_trg
+  before update on public.profiles
+  for each row execute function public.guard_admin_flag();
+
+-- ── Presence (online/offline) ──
+create or replace function public.touch_presence(desired text default 'online')
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  update public.profiles
+     set last_seen = now(),
+         presence  = case when desired in ('online','offline') then desired else presence end
+   where id = auth.uid();
+end;
+$$;
+
+create or replace function public.go_offline()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  update public.profiles set presence = 'offline', last_seen = now() where id = auth.uid();
+end;
+$$;
+
+create or replace function public.is_user_online(p_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select presence = 'online' and last_seen > now() - interval '70 seconds'
+       from public.profiles where id = p_id),
+    false);
+$$;
+
+create or replace function public.set_admin(target uuid, value boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.profiles where id = auth.uid() and is_admin) then
+    raise exception 'not an admin';
+  end if;
+  update public.profiles set is_admin = value where id = target;
+end;
+$$;
+
 -- ════════════════════════════════════════════════════════════
 --  CATEGORIES
 -- ════════════════════════════════════════════════════════════
@@ -88,8 +152,10 @@ create table if not exists public.posts (
   title       text not null check (char_length(title) between 1 and 300),
   body        text not null default '',
   image_url   text,
+  edited_at   timestamptz,
   created_at  timestamptz not null default now()
 );
+alter table public.posts add column if not exists edited_at timestamptz;
 
 alter table public.posts enable row level security;
 drop policy if exists "posts are public" on public.posts;
@@ -103,6 +169,12 @@ create policy "authors update own posts" on public.posts
 drop policy if exists "authors delete own posts" on public.posts;
 create policy "authors delete own posts" on public.posts
   for delete using (auth.uid() = author_id);
+drop policy if exists "admins delete any post" on public.posts;
+create policy "admins delete any post" on public.posts
+  for delete using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_admin));
+drop policy if exists "admins update any post" on public.posts;
+create policy "admins update any post" on public.posts
+  for update using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_admin));
 
 create index if not exists posts_category_idx on public.posts(category_id);
 create index if not exists posts_author_idx on public.posts(author_id);
@@ -118,6 +190,7 @@ create table if not exists public.comments (
   parent_id  uuid references public.comments(id) on delete cascade,
   body       text check (char_length(body) <= 5000),
   image_url  text,
+  edited_at  timestamptz,
   created_at timestamptz not null default now(),
   -- a comment must have text and/or an image
   check (coalesce(nullif(btrim(body), ''), null) is not null or image_url is not null)
@@ -135,6 +208,10 @@ create policy "authors update own comments" on public.comments
 drop policy if exists "authors delete own comments" on public.comments;
 create policy "authors delete own comments" on public.comments
   for delete using (auth.uid() = author_id);
+drop policy if exists "admins delete any comment" on public.comments;
+create policy "admins delete any comment" on public.comments
+  for delete using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_admin));
+alter table public.comments add column if not exists edited_at timestamptz;
 
 create index if not exists comments_post_idx on public.comments(post_id);
 
@@ -271,6 +348,133 @@ $$;
 alter publication supabase_realtime add table public.messages;
 
 -- ════════════════════════════════════════════════════════════
+--  NOTIFICATIONS
+-- ════════════════════════════════════════════════════════════
+create table if not exists public.notifications (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  actor_id    uuid references public.profiles(id) on delete cascade,
+  kind        text not null,
+  post_id     uuid references public.posts(id) on delete cascade,
+  comment_id  uuid references public.comments(id) on delete cascade,
+  conversation_id uuid references public.conversations(id) on delete cascade,
+  read        boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+create index if not exists notifications_user_idx on public.notifications(user_id, created_at desc);
+create index if not exists notifications_unread_idx on public.notifications(user_id) where read = false;
+
+alter table public.notifications enable row level security;
+drop policy if exists "see own notifications" on public.notifications;
+create policy "see own notifications" on public.notifications for select using (auth.uid() = user_id);
+drop policy if exists "update own notifications" on public.notifications;
+create policy "update own notifications" on public.notifications for update using (auth.uid() = user_id);
+drop policy if exists "delete own notifications" on public.notifications;
+create policy "delete own notifications" on public.notifications for delete using (auth.uid() = user_id);
+
+create or replace function public.notify(
+  p_user uuid, p_actor uuid, p_kind text,
+  p_post uuid default null, p_comment uuid default null, p_conv uuid default null
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_user is null or p_user = p_actor then return; end if;
+  insert into public.notifications(user_id, actor_id, kind, post_id, comment_id, conversation_id)
+  values (p_user, p_actor, p_kind, p_post, p_comment, p_conv);
+end;
+$$;
+
+create or replace function public.on_new_comment()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare post_author uuid; parent_author uuid;
+begin
+  select author_id into post_author from public.posts where id = new.post_id;
+  if new.parent_id is not null then
+    select author_id into parent_author from public.comments where id = new.parent_id;
+    perform public.notify(parent_author, new.author_id, 'reply', new.post_id, new.id, null);
+  end if;
+  if post_author is distinct from new.author_id
+     and (parent_author is null or parent_author is distinct from post_author) then
+    perform public.notify(post_author, new.author_id, 'comment', new.post_id, new.id, null);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists on_new_comment_trg on public.comments;
+create trigger on_new_comment_trg after insert on public.comments
+  for each row execute function public.on_new_comment();
+
+create or replace function public.on_new_vote()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare target_author uuid;
+begin
+  if new.value <> 1 then return new; end if;
+  if new.post_id is not null then
+    select author_id into target_author from public.posts where id = new.post_id;
+    perform public.notify(target_author, new.user_id, 'vote_post', new.post_id, null, null);
+  elsif new.comment_id is not null then
+    select author_id into target_author from public.comments where id = new.comment_id;
+    perform public.notify(target_author, new.user_id, 'vote_comment',
+      (select post_id from public.comments where id = new.comment_id), new.comment_id, null);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists on_new_vote_trg on public.votes;
+create trigger on_new_vote_trg after insert on public.votes
+  for each row execute function public.on_new_vote();
+
+create or replace function public.on_friendship_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    perform public.notify(new.addressee_id, new.requester_id, 'friend_request', null, null, null);
+  elsif tg_op = 'UPDATE' and new.status = 'accepted' and old.status = 'pending' then
+    perform public.notify(new.requester_id, new.addressee_id, 'friend_accept', null, null, null);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists on_friendship_change_trg on public.friendships;
+create trigger on_friendship_change_trg after insert or update on public.friendships
+  for each row execute function public.on_friendship_change();
+
+create or replace function public.get_notifications(p_limit int default 50)
+returns table (
+  id uuid, kind text, read boolean, created_at timestamptz,
+  post_id uuid, comment_id uuid, conversation_id uuid,
+  actor_id uuid, actor_username text, actor_display_name text, actor_avatar_url text,
+  post_title text
+)
+language sql stable security definer set search_path = public as $$
+  select n.id, n.kind, n.read, n.created_at, n.post_id, n.comment_id, n.conversation_id,
+         n.actor_id, a.username, a.display_name, a.avatar_url, p.title
+  from public.notifications n
+  left join public.profiles a on a.id = n.actor_id
+  left join public.posts p on p.id = n.post_id
+  where n.user_id = auth.uid()
+  order by n.created_at desc limit p_limit;
+$$;
+
+create or replace function public.unread_notification_count()
+returns int language sql stable security definer set search_path = public as $$
+  select count(*)::int from public.notifications where user_id = auth.uid() and read = false;
+$$;
+
+create or replace function public.mark_notifications_read(p_ids uuid[] default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_ids is null then
+    update public.notifications set read = true where user_id = auth.uid() and read = false;
+  else
+    update public.notifications set read = true where user_id = auth.uid() and id = any(p_ids);
+  end if;
+end;
+$$;
+
+alter publication supabase_realtime add table public.notifications;
+
+-- ════════════════════════════════════════════════════════════
 --  SEED CATEGORIES
 -- ════════════════════════════════════════════════════════════
 -- icon column stores a slug-based key; the UI maps it to an SVG icon
@@ -282,5 +486,6 @@ insert into public.categories (slug, name, description, icon, color) values
   ('security',    'Security',     'Pentest, cryptography, OSINT, CTF',             'shield',   '#ff3b5c'),
   ('hardware',    'Hardware',     'Hardware, builds, overclocking, repair',        'wrench',   '#9a9aa3'),
   ('web',         'Web Dev',      'Frontend, backend, API, frameworks',            'globe',    '#00ff9c'),
-  ('ai-ml',       'AI / ML',      'Neural nets, LLMs, datasets, inference',        'cpu',      '#22d3ee')
+  ('ai-ml',       'AI / ML',      'Neural nets, LLMs, datasets, inference',        'cpu',      '#22d3ee'),
+  ('flood',       'Flood (Offtop)','Anything goes — offtopic, memes, random chatter','wave',     '#ff2fb9')
 on conflict (slug) do nothing;

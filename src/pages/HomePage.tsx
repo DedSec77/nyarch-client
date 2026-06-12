@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { CategoryBar } from '@/components/layout/CategoryBar'
 import { PostCard } from '@/components/forum/PostCard'
 import { Icon } from '@/components/ui/Icon'
 import { FullSpinner } from '@/components/ui/Spinner'
@@ -34,7 +35,8 @@ export function HomePage() {
       <Sidebar />
 
       <div className="min-w-0 flex-1">
-        <div className="panel mb-3 flex items-center gap-1 p-1.5">
+        <CategoryBar />
+        <div className="panel mb-3 flex items-center gap-1 overflow-x-auto p-1.5">
           <span className="px-2 text-sm text-ink-faint">
             <span className="text-neon-green">$</span> sort --by
           </span>

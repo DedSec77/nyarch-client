@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { PresenceProvider } from './contexts/PresenceContext'
+import { NotificationProvider } from './contexts/NotificationContext'
 import App from './App'
 import './index.css'
 
@@ -11,7 +13,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <App />
+          <PresenceProvider>
+            <NotificationProvider>
+              <App />
+            </NotificationProvider>
+          </PresenceProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

@@ -6,9 +6,12 @@ import { mapPost, type RawPostRow } from '@/hooks/usePosts'
 import type { Post, Profile, Friendship } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { Icon } from '@/components/ui/Icon'
+import { AdminBadge } from '@/components/ui/AdminBadge'
+import { OnlineDot, PresenceAvatar } from '@/components/ui/OnlineDot'
 import { FullSpinner } from '@/components/ui/Spinner'
 import { PostCard } from '@/components/forum/PostCard'
 import { getOrCreateConversation } from '@/lib/api'
+import { useUserPresence } from '@/hooks/usePresence'
 import { timeAgo, extractPalette, accentFor } from '@/lib/utils'
 
 type FriendUI = 'none' | 'pending_out' | 'pending_in' | 'friends' | 'self'
@@ -24,6 +27,7 @@ export function ProfilePage() {
   const [friendRow, setFriendRow] = useState<Friendship | null>(null)
   const [friendCount, setFriendCount] = useState(0)
   const [palette, setPalette] = useState<string[] | null>(null)
+  const online = useUserPresence(profile?.id)
 
   const loadFriendState = useCallback(
     async (profileId: string) => {
@@ -156,7 +160,7 @@ export function ProfilePage() {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-term-900 via-term-900/55 to-transparent" />
           {/* animated seam bar: colors taken from the banner/gif, gently shifting */}
           <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 animate-seam-shift"
+            className="seam-bar pointer-events-none absolute inset-x-0 bottom-0 h-0.5 animate-seam-shift"
             style={{ backgroundImage: seamGradient, backgroundSize: '200% 100%' }}
           />
         </div>
@@ -164,11 +168,19 @@ export function ProfilePage() {
         <div className="relative z-10 px-4 pb-4">
           <div className="-mt-8 flex items-end gap-3">
             <div className="rounded-lg border-2 border-term-900 bg-term-900">
-              <Avatar src={profile.avatar_url} name={profile.display_name} size={80} />
+              <PresenceAvatar online={online} dotSize={14}>
+                <Avatar src={profile.avatar_url} name={profile.display_name} size={80} />
+              </PresenceAvatar>
             </div>
             <div className="flex-1 pb-1">
-              <h1 className="text-xl font-bold text-ink">{profile.display_name}</h1>
-              <p className="text-sm text-neon-green">@{profile.username}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold text-ink">{profile.display_name}</h1>
+                {profile.is_admin && <AdminBadge />}
+              </div>
+              <p className="flex items-center gap-2 text-sm text-neon-green">
+                @{profile.username}
+                <OnlineDot online={online} withLabel size={7} className="text-xs font-normal" />
+              </p>
             </div>
           </div>
 

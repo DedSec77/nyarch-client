@@ -60,6 +60,8 @@ export function categoryIcon(slug: string | undefined): IconName {
       return 'globe'
     case 'ai-ml':
       return 'cpu'
+    case 'flood':
+      return 'wave'
     default:
       return 'hash'
   }
@@ -290,7 +292,7 @@ export function Icon({ name, size = 16, strokeWidth = 1.8, className = '', ...re
     case 'wrench':
       return (
         <svg {...common}>
-          <path d="M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.1 2.1 0 0 1-3-3l9-9a4 4 0 0 0-2-2Z" />
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />
         </svg>
       )
     case 'globe':

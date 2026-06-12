@@ -41,7 +41,7 @@ export function Sidebar() {
                   : 'text-ink-dim hover:bg-term-800 hover:text-ink'
               }`}
             >
-              <Icon name={categoryIcon(c.slug)} size={14} style={{ color: c.color }} />
+              <Icon name={categoryIcon(c.slug)} size={14} className="mono-accent" style={{ color: c.color }} />
               <span className="flex-1 truncate">{c.name}</span>
               {typeof c.post_count === 'number' && (
                 <span className="text-xs text-ink-faint">{c.post_count}</span>

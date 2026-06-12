@@ -3,14 +3,19 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase, BUCKET_AVATARS, BUCKET_BANNERS } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { usePresence } from '@/contexts/PresenceContext'
 import { uploadImage } from '@/lib/utils'
+import { pushEnabled, setPushEnabled } from '@/lib/push'
 import { Avatar } from '@/components/ui/Avatar'
+import { OnlineDot } from '@/components/ui/OnlineDot'
 import { Icon } from '@/components/ui/Icon'
 import { FullSpinner } from '@/components/ui/Spinner'
 
 export function SettingsPage() {
   const { user, profile, refreshProfile } = useAuth()
   const { themes, active, setActive } = useTheme()
+  const { visibility, setVisibility } = usePresence()
+  const [pushOn, setPushOn] = useState(pushEnabled())
   const navigate = useNavigate()
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
@@ -178,6 +183,49 @@ export function SettingsPage() {
               placeholder="// tell us about yourself"
             />
             <p className="mt-1 text-right text-xs text-ink-faint">{bio.length}/500</p>
+          </div>
+
+          {/* presence */}
+          <div>
+            <label className="mb-1 flex items-center gap-1.5 text-xs text-ink-dim">
+              <OnlineDot online={visibility === 'online'} size={9} /> $ status
+            </label>
+            <div className="flex gap-2">
+              {(['online', 'offline'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVisibility(v)}
+                  className={`btn flex-1 ${visibility === v ? 'btn-primary' : 'btn-ghost'}`}
+                >
+                  {v === 'online' ? 'appear online' : 'appear offline'}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-ink-faint">
+              // you always show as offline once you leave the site
+            </p>
+          </div>
+
+          {/* push notifications */}
+          <div>
+            <label className="mb-1 flex items-center gap-1.5 text-xs text-ink-dim">
+              <Icon name="mail" size={13} /> $ push_notifications
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !pushOn
+                setPushOn(next)
+                setPushEnabled(next)
+              }}
+              className={`btn w-full ${pushOn ? 'btn-primary' : 'btn-ghost'}`}
+            >
+              {pushOn ? 'push notifications: on' : 'push notifications: off'}
+            </button>
+            <p className="mt-1 text-xs text-ink-faint">
+              // desktop/browser alerts for replies, upvotes, friends and DMs
+            </p>
           </div>
 
           {/* theme picker */}

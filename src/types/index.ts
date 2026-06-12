@@ -7,6 +7,9 @@ export interface Profile {
   avatar_url: string | null
   banner_url: string | null
   bio: string | null
+  is_admin?: boolean
+  presence?: 'online' | 'offline'
+  last_seen?: string | null
   created_at: string
 }
 
@@ -28,6 +31,7 @@ export interface Post {
   body: string
   image_url: string | null
   created_at: string
+  edited_at?: string | null
   // joined / computed
   author?: Profile
   category?: Category
@@ -44,6 +48,7 @@ export interface Comment {
   body: string
   image_url: string | null
   created_at: string
+  edited_at?: string | null
   author?: Profile
   score?: number
   my_vote?: -1 | 0 | 1
@@ -89,4 +94,28 @@ export interface Message {
   is_gif: boolean
   created_at: string
   sender?: Profile
+}
+
+export type NotificationKind =
+  | 'vote_post'
+  | 'vote_comment'
+  | 'comment'
+  | 'reply'
+  | 'friend_request'
+  | 'friend_accept'
+  | 'unread_dm'
+
+export interface AppNotification {
+  id: string
+  kind: NotificationKind
+  read: boolean
+  created_at: string
+  post_id: string | null
+  comment_id: string | null
+  conversation_id: string | null
+  actor_id: string | null
+  actor_username: string | null
+  actor_display_name: string | null
+  actor_avatar_url: string | null
+  post_title: string | null
 }

@@ -6,8 +6,10 @@ import { useMessages } from '@/hooks/useMessages'
 import type { Conversation, Message } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { Icon } from '@/components/ui/Icon'
+import { OnlineDot } from '@/components/ui/OnlineDot'
 import { FullSpinner } from '@/components/ui/Spinner'
 import { GifPicker } from '@/components/ui/GifPicker'
+import { useUserPresence } from '@/hooks/usePresence'
 import { uploadImage, timeAgo, classNames } from '@/lib/utils'
 import type { GiphyGif } from '@/lib/giphy'
 
@@ -70,6 +72,7 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
   }
 
   const other = conversation.other
+  const otherOnline = useUserPresence(other?.id)
 
   return (
     <div className="flex h-full flex-col">
@@ -82,9 +85,7 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
             <span className="block text-xs text-neon-green">@{other?.username}</span>
           </div>
         </Link>
-        <span className="ml-auto flex items-center gap-1 text-xs text-ink-faint">
-          <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> e2e dm
-        </span>
+        <OnlineDot online={otherOnline} withLabel size={7} className="ml-auto text-xs" />
       </div>
 
       {/* messages */}
@@ -143,7 +144,7 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
         <div className="flex items-end gap-1.5">
           <button
             onClick={() => fileRef.current?.click()}
-            className="btn btn-ghost px-2 py-2"
+            className="btn btn-ghost flex h-9 w-9 items-center justify-center p-0"
             title="attach photo"
           >
             <Icon name="image" size={16} />
@@ -153,7 +154,7 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
           <div className="relative">
             <button
               onClick={() => setShowGif((s) => !s)}
-              className="btn btn-ghost px-2 py-2 text-neon-magenta"
+              className="btn btn-ghost flex h-9 w-9 items-center justify-center p-0 text-[11px] font-bold text-neon-magenta"
               title="gif"
             >
               GIF
@@ -174,7 +175,12 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
             className="input max-h-32 flex-1 resize-none py-2"
             placeholder="type a message… (Enter to send)"
           />
-          <button onClick={sendText} disabled={sending} className="btn btn-primary px-3 py-2" title="send">
+          <button
+            onClick={sendText}
+            disabled={sending}
+            className="btn btn-primary flex h-9 w-9 items-center justify-center p-0"
+            title="send"
+          >
             <Icon name="send" size={16} />
           </button>
         </div>

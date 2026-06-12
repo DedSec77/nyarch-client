@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { Navbar } from './components/layout/Navbar'
 import { ConfigBanner } from './components/layout/ConfigBanner'
+import { UpdateBanner } from './components/layout/UpdateBanner'
 import { FullSpinner } from './components/ui/Spinner'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -12,13 +13,25 @@ import { SettingsPage } from './pages/SettingsPage'
 import { ThemeStorePage } from './pages/ThemeStorePage'
 import { FriendsPage } from './pages/FriendsPage'
 import { MessagesPage } from './pages/MessagesPage'
+import { NotificationsPage } from './pages/NotificationsPage'
+import { AdminPage } from './pages/AdminPage'
 import type { ReactNode } from 'react'
 
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   const loc = useLocation()
   if (loading) return <FullSpinner label="auth" />
+  if (!user) return <Navigate to="/login" state={{ from: loc.pathname + loc.search }} replace />
+  return <>{children}</>
+}
+
+/** Admin-only route guard. */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { user, profile, loading } = useAuth()
+  const loc = useLocation()
+  if (loading) return <FullSpinner label="auth" />
   if (!user) return <Navigate to="/login" state={{ from: loc.pathname }} replace />
+  if (!profile?.is_admin) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -26,15 +39,47 @@ export default function App() {
   return (
     <div className="scanlines min-h-screen">
       <ConfigBanner />
+      <UpdateBanner />
       <Navbar />
       <main className="mx-auto max-w-6xl px-3 py-4 sm:px-4">
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          {/* The only public route — everything else requires an account. */}
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/post/:id" element={<PostPage />} />
-          <Route path="/u/:username" element={<ProfilePage />} />
+
+          <Route
+            path="/"
+            element={
+              <Protected>
+                <HomePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/post/:id"
+            element={
+              <Protected>
+                <PostPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/u/:username"
+            element={
+              <Protected>
+                <ProfilePage />
+              </Protected>
+            }
+          />
           <Route
             path="/submit"
+            element={
+              <Protected>
+                <SubmitPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/submit/:id"
             element={
               <Protected>
                 <SubmitPage />
@@ -49,7 +94,22 @@ export default function App() {
               </Protected>
             }
           />
-          <Route path="/themes" element={<ThemeStorePage />} />
+          <Route
+            path="/themes"
+            element={
+              <Protected>
+                <ThemeStorePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <Protected>
+                <NotificationsPage />
+              </Protected>
+            }
+          />
           <Route
             path="/friends"
             element={
@@ -72,6 +132,14 @@ export default function App() {
               <Protected>
                 <MessagesPage />
               </Protected>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminOnly>
+                <AdminPage />
+              </AdminOnly>
             }
           />
           <Route path="*" element={<NotFound />} />

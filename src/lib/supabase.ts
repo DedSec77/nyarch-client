@@ -17,9 +17,14 @@ export const supabase = createClient(
   anonKey ?? 'placeholder-anon-key',
   {
     auth: {
+      // Keep the user signed in across reloads / app restarts. Supabase stores
+      // the session in localStorage by default, which persists in the browser
+      // and in the Tauri WebView, so users don't have to log in every time.
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      storageKey: 'nyarch.auth',
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     },
   },
 )

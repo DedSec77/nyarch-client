@@ -5,6 +5,7 @@
 
 -- Feed of posts with author, category, score, comment count and the
 -- caller's own vote. Supports sorting by 'hot' | 'new' | 'top'.
+drop function if exists public.get_posts(text, text, int, int);
 create or replace function public.get_posts(
   p_category text default null,
   p_sort     text default 'hot',
@@ -13,15 +14,15 @@ create or replace function public.get_posts(
 )
 returns table (
   id uuid, author_id uuid, category_id uuid, title text, body text,
-  image_url text, created_at timestamptz,
-  author_username text, author_display_name text, author_avatar_url text,
+  image_url text, created_at timestamptz, edited_at timestamptz,
+  author_username text, author_display_name text, author_avatar_url text, author_is_admin boolean,
   category_slug text, category_name text, category_icon text, category_color text,
   score bigint, comment_count bigint, my_vote int
 )
 language sql stable security definer set search_path = public as $$
   select
-    p.id, p.author_id, p.category_id, p.title, p.body, p.image_url, p.created_at,
-    pr.username, pr.display_name, pr.avatar_url,
+    p.id, p.author_id, p.category_id, p.title, p.body, p.image_url, p.created_at, p.edited_at,
+    pr.username, pr.display_name, pr.avatar_url, pr.is_admin,
     c.slug, c.name, c.icon, c.color,
     coalesce((select sum(v.value) from votes v where v.post_id = p.id), 0) as score,
     (select count(*) from comments cm where cm.post_id = p.id) as comment_count,
@@ -43,18 +44,19 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- Single post detail
+drop function if exists public.get_post(uuid);
 create or replace function public.get_post(p_id uuid)
 returns table (
   id uuid, author_id uuid, category_id uuid, title text, body text,
-  image_url text, created_at timestamptz,
-  author_username text, author_display_name text, author_avatar_url text,
+  image_url text, created_at timestamptz, edited_at timestamptz,
+  author_username text, author_display_name text, author_avatar_url text, author_is_admin boolean,
   category_slug text, category_name text, category_icon text, category_color text,
   score bigint, comment_count bigint, my_vote int
 )
 language sql stable security definer set search_path = public as $$
   select
-    p.id, p.author_id, p.category_id, p.title, p.body, p.image_url, p.created_at,
-    pr.username, pr.display_name, pr.avatar_url,
+    p.id, p.author_id, p.category_id, p.title, p.body, p.image_url, p.created_at, p.edited_at,
+    pr.username, pr.display_name, pr.avatar_url, pr.is_admin,
     c.slug, c.name, c.icon, c.color,
     coalesce((select sum(v.value) from votes v where v.post_id = p.id), 0),
     (select count(*) from comments cm where cm.post_id = p.id),
@@ -69,14 +71,15 @@ $$;
 drop function if exists public.get_comments(uuid);
 create or replace function public.get_comments(p_post uuid)
 returns table (
-  id uuid, post_id uuid, author_id uuid, parent_id uuid, body text, image_url text, created_at timestamptz,
-  author_username text, author_display_name text, author_avatar_url text,
+  id uuid, post_id uuid, author_id uuid, parent_id uuid, body text, image_url text,
+  created_at timestamptz, edited_at timestamptz,
+  author_username text, author_display_name text, author_avatar_url text, author_is_admin boolean,
   score bigint, my_vote int
 )
 language sql stable security definer set search_path = public as $$
   select
-    cm.id, cm.post_id, cm.author_id, cm.parent_id, cm.body, cm.image_url, cm.created_at,
-    pr.username, pr.display_name, pr.avatar_url,
+    cm.id, cm.post_id, cm.author_id, cm.parent_id, cm.body, cm.image_url, cm.created_at, cm.edited_at,
+    pr.username, pr.display_name, pr.avatar_url, pr.is_admin,
     coalesce((select sum(v.value) from votes v where v.comment_id = cm.id), 0),
     coalesce((select v.value from votes v where v.comment_id = cm.id and v.user_id = auth.uid()), 0)
   from comments cm
@@ -86,18 +89,19 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- Posts authored by a given username (for profile pages)
+drop function if exists public.get_user_posts(text);
 create or replace function public.get_user_posts(p_username text)
 returns table (
   id uuid, author_id uuid, category_id uuid, title text, body text,
-  image_url text, created_at timestamptz,
-  author_username text, author_display_name text, author_avatar_url text,
+  image_url text, created_at timestamptz, edited_at timestamptz,
+  author_username text, author_display_name text, author_avatar_url text, author_is_admin boolean,
   category_slug text, category_name text, category_icon text, category_color text,
   score bigint, comment_count bigint, my_vote int
 )
 language sql stable security definer set search_path = public as $$
   select
-    p.id, p.author_id, p.category_id, p.title, p.body, p.image_url, p.created_at,
-    pr.username, pr.display_name, pr.avatar_url,
+    p.id, p.author_id, p.category_id, p.title, p.body, p.image_url, p.created_at, p.edited_at,
+    pr.username, pr.display_name, pr.avatar_url, pr.is_admin,
     c.slug, c.name, c.icon, c.color,
     coalesce((select sum(v.value) from votes v where v.post_id = p.id), 0),
     (select count(*) from comments cm where cm.post_id = p.id),

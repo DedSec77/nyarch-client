@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, BUCKET_POSTS } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { uploadImage } from '@/lib/utils'
 import { Icon } from '@/components/ui/Icon'
+import { FullSpinner } from '@/components/ui/Spinner'
 import type { Category } from '@/types'
 
 export function SubmitPage() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const { id } = useParams<{ id: string }>()
+  const editing = Boolean(id)
   const navigate = useNavigate()
   const [cats, setCats] = useState<Category[]>([])
   const [categoryId, setCategoryId] = useState('')
@@ -15,22 +18,53 @@ export function SubmitPage() {
   const [body, setBody] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [existingImage, setExistingImage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(editing)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.rpc('get_categories').then(({ data }) => {
       const list = (data as Category[]) ?? []
       setCats(list)
-      if (list[0]) setCategoryId(list[0].id)
+      if (!editing && list[0]) setCategoryId(list[0].id)
     })
-  }, [])
+  }, [editing])
+
+  // load post for editing
+  useEffect(() => {
+    if (!editing || !id) return
+    setLoading(true)
+    supabase
+      .from('posts')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          setError('Post not found')
+          setLoading(false)
+          return
+        }
+        // only the author (or an admin) may edit
+        if (data.author_id !== user?.id && !profile?.is_admin) {
+          navigate(`/post/${id}`, { replace: true })
+          return
+        }
+        setTitle(data.title)
+        setBody(data.body ?? '')
+        setCategoryId(data.category_id)
+        setExistingImage(data.image_url ?? null)
+        setLoading(false)
+      })
+  }, [editing, id, user, profile, navigate])
 
   function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
     setFile(f)
     setPreview(URL.createObjectURL(f))
+    setExistingImage(null)
   }
 
   async function submit(e: React.FormEvent) {
@@ -39,7 +73,7 @@ export function SubmitPage() {
     setBusy(true)
     setError(null)
 
-    let imageUrl: string | null = null
+    let imageUrl: string | null = existingImage
     if (file) {
       const { url, error } = await uploadImage(BUCKET_POSTS, user.id, file)
       if (error) {
@@ -48,6 +82,26 @@ export function SubmitPage() {
         return
       }
       imageUrl = url
+    }
+
+    if (editing && id) {
+      const { error } = await supabase
+        .from('posts')
+        .update({
+          category_id: categoryId,
+          title: title.trim(),
+          body: body.trim(),
+          image_url: imageUrl,
+          edited_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+      setBusy(false)
+      if (error) {
+        setError(error.message)
+        return
+      }
+      navigate(`/post/${id}`)
+      return
     }
 
     const { data, error } = await supabase
@@ -70,12 +124,16 @@ export function SubmitPage() {
     navigate(`/post/${data.id}`)
   }
 
+  if (loading) return <FullSpinner label="loading post" />
+
+  const shownImage = preview || existingImage
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="panel">
         <div className="panel-header">
           <span className="tui-dots" />
-          <span>~/posts/new</span>
+          <span>{editing ? '~/posts/edit' : '~/posts/new'}</span>
         </div>
         <form onSubmit={submit} className="space-y-4 p-4">
           <div>
@@ -124,14 +182,15 @@ export function SubmitPage() {
               onChange={pickFile}
               className="block w-full text-sm text-ink-dim file:mr-3 file:rounded file:border file:border-term-700 file:bg-term-800 file:px-3 file:py-1.5 file:text-sm file:text-ink-dim hover:file:bg-term-750"
             />
-            {preview && (
+            {shownImage && (
               <div className="relative mt-2 inline-block">
-                <img src={preview} alt="" className="max-h-60 rounded-md border border-term-700/60" />
+                <img src={shownImage} alt="" className="max-h-60 rounded-md border border-term-700/60" />
                 <button
                   type="button"
                   onClick={() => {
                     setFile(null)
                     setPreview(null)
+                    setExistingImage(null)
                   }}
                   className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-neon-red/50 bg-term-900 text-neon-red"
                 >
@@ -149,7 +208,7 @@ export function SubmitPage() {
 
           <div className="flex gap-2">
             <button type="submit" disabled={busy} className="btn btn-primary">
-              {busy ? 'publishing…' : '> publish'}
+              {busy ? (editing ? 'saving…' : 'publishing…') : editing ? '> save changes' : '> publish'}
             </button>
             <button type="button" onClick={() => navigate(-1)} className="btn btn-ghost">
               cancel

@@ -26,7 +26,7 @@ export function Avatar({ src, name, size = 36, className = '', ring = false }: A
   return (
     <div
       style={{ ...style, borderColor: accent, color: accent }}
-      className={`flex shrink-0 select-none items-center justify-center rounded-md border bg-term-850 font-bold ${className}`}
+      className={`avatar-accent flex shrink-0 select-none items-center justify-center rounded-md border bg-term-850 font-bold ${className}`}
     >
       {initials(name)}
     </div>

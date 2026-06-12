@@ -28,6 +28,7 @@ export interface Theme {
   name: string
   author: string
   official: boolean // shown in the "workshop" (by the creators)
+  mono?: boolean // grayscale theme: neutralize hardcoded accent colors (category colors, etc.)
   colors: ThemeColors
 }
 
@@ -79,22 +80,24 @@ export const THEME_MONOCHROME: Theme = {
   name: 'monochrome',
   author: 'nyarch',
   official: true,
+  mono: true,
+  // Exact requested palette: #0b0b0d, #151517, #1b1b1d, #212124, #262629, #2b2b2e
   colors: {
-    term950: '#0a0a0a',
-    term900: '#121212',
-    term850: '#181818',
-    term800: '#1f1f1f',
-    term750: '#262626',
-    term700: '#2e2e2e',
+    term950: '#0b0b0d',
+    term900: '#151517',
+    term850: '#1b1b1d',
+    term800: '#212124',
+    term750: '#262629',
+    term700: '#2b2b2e',
     // all accents are shades of white/grey — true monochrome
-    neonGreen: '#f2f2f2',
-    neonCyan: '#c8c8c8',
-    neonMagenta: '#a8a8a8',
-    neonAmber: '#dadada',
-    neonRed: '#8c8c8c',
-    ink: '#ededed',
-    inkDim: '#9c9c9c',
-    inkFaint: '#5a5a5a',
+    neonGreen: '#e8e8ea',
+    neonCyan: '#c2c2c6',
+    neonMagenta: '#a6a6ac',
+    neonAmber: '#d4d4d8',
+    neonRed: '#8a8a90',
+    ink: '#ededee',
+    inkDim: '#9a9aa0',
+    inkFaint: '#5a5a60',
   },
 }
 
@@ -164,11 +167,32 @@ function hexToRgbTriple(hex: string): string {
   return `${r} ${g} ${b}`
 }
 
+/** Heuristic: a theme is "mono" if flagged, or if all neon accents are near-grey. */
+export function isMonoTheme(theme: Theme): boolean {
+  if (theme.mono) return true
+  const accents = [
+    theme.colors.neonGreen,
+    theme.colors.neonCyan,
+    theme.colors.neonMagenta,
+    theme.colors.neonAmber,
+    theme.colors.neonRed,
+  ]
+  return accents.every((hex) => {
+    const t = hexToRgbTriple(hex).split(' ').map(Number)
+    const [r, g, b] = t
+    return Math.max(r, g, b) - Math.min(r, g, b) <= 16 // low saturation
+  })
+}
+
 export function applyTheme(theme: Theme) {
   const root = document.documentElement
   ;(Object.keys(theme.colors) as (keyof ThemeColors)[]).forEach((k) => {
     root.style.setProperty(CSS_VAR[k], hexToRgbTriple(theme.colors[k]))
   })
+  // Mark grayscale themes so CSS can neutralize hardcoded accent colors
+  // (category colors from the DB, comment depth borders, avatar accents, seams).
+  if (isMonoTheme(theme)) root.setAttribute('data-mono', '')
+  else root.removeAttribute('data-mono')
 }
 
 const LS_INSTALLED = 'nyarch.themes.installed' // custom themes added by the user

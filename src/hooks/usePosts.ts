@@ -12,9 +12,11 @@ export interface RawPostRow {
   body: string
   image_url: string | null
   created_at: string
+  edited_at?: string | null
   author_username: string
   author_display_name: string
   author_avatar_url: string | null
+  author_is_admin?: boolean
   category_slug: string
   category_name: string
   category_icon: string
@@ -33,6 +35,7 @@ export function mapPost(r: RawPostRow): Post {
     body: r.body,
     image_url: r.image_url,
     created_at: r.created_at,
+    edited_at: r.edited_at ?? null,
     score: Number(r.score),
     comment_count: Number(r.comment_count),
     my_vote: (r.my_vote as -1 | 0 | 1) ?? 0,
@@ -41,6 +44,7 @@ export function mapPost(r: RawPostRow): Post {
       username: r.author_username,
       display_name: r.author_display_name,
       avatar_url: r.author_avatar_url,
+      is_admin: r.author_is_admin ?? false,
       banner_url: null,
       bio: null,
       created_at: '',

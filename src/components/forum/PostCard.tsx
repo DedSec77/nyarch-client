@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { Post } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { Icon, categoryIcon } from '@/components/ui/Icon'
+import { AdminBadge } from '@/components/ui/AdminBadge'
 import { VoteControl } from '@/components/ui/VoteControl'
 import { timeAgo } from '@/lib/utils'
 import { castVote } from '@/lib/api'
@@ -36,7 +37,7 @@ export function PostCard({ post, onVote }: PostCardProps) {
         <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-faint">
           <Link
             to={`/?c=${post.category?.slug}`}
-            className="chip hover:border-term-700"
+            className="chip mono-accent hover:border-term-700"
             style={{ color: post.category?.color }}
           >
             <Icon name={categoryIcon(post.category?.slug)} size={12} />
@@ -47,8 +48,10 @@ export function PostCard({ post, onVote }: PostCardProps) {
             <Avatar src={post.author?.avatar_url} name={post.author?.display_name ?? '?'} size={18} />
             <span>@{post.author?.username}</span>
           </Link>
+          {post.author?.is_admin && <AdminBadge size="sm" />}
           <span>·</span>
           <span>{timeAgo(post.created_at)} ago</span>
+          {post.edited_at && <span className="italic">· edited</span>}
         </div>
 
         <Link to={`/post/${post.id}`} className="group">

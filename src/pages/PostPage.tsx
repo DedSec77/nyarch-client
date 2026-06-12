@@ -6,6 +6,7 @@ import { mapPost, type RawPostRow } from '@/hooks/usePosts'
 import type { Post, Comment as CommentType } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { Icon, categoryIcon } from '@/components/ui/Icon'
+import { AdminBadge } from '@/components/ui/AdminBadge'
 import { VoteControl } from '@/components/ui/VoteControl'
 import { FullSpinner } from '@/components/ui/Spinner'
 import { Comment } from '@/components/forum/Comment'
@@ -20,9 +21,11 @@ interface RawComment {
   body: string | null
   image_url: string | null
   created_at: string
+  edited_at: string | null
   author_username: string
   author_display_name: string
   author_avatar_url: string | null
+  author_is_admin?: boolean
   score: number
   my_vote: number
 }
@@ -39,6 +42,7 @@ function buildTree(rows: RawComment[]): CommentType[] {
       body: r.body ?? '',
       image_url: r.image_url,
       created_at: r.created_at,
+      edited_at: r.edited_at ?? null,
       score: Number(r.score),
       my_vote: (r.my_vote as -1 | 0 | 1) ?? 0,
       replies: [],
@@ -47,6 +51,7 @@ function buildTree(rows: RawComment[]): CommentType[] {
         username: r.author_username,
         display_name: r.author_display_name,
         avatar_url: r.author_avatar_url,
+        is_admin: r.author_is_admin ?? false,
         banner_url: null,
         bio: null,
         created_at: '',
@@ -63,7 +68,7 @@ function buildTree(rows: RawComment[]): CommentType[] {
 
 export function PostPage() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [post, setPost] = useState<Post | null>(null)
   const [comments, setComments] = useState<CommentType[]>([])
@@ -144,6 +149,21 @@ export function PostPage() {
     return { error: null }
   }
 
+  async function editComment(commentId: string, body: string): Promise<{ error: string | null }> {
+    const { error } = await supabase
+      .from('comments')
+      .update({ body: body.trim() || null, edited_at: new Date().toISOString() })
+      .eq('id', commentId)
+    if (error) return { error: error.message }
+    await loadComments()
+    return { error: null }
+  }
+
+  async function deleteComment(commentId: string): Promise<void> {
+    await supabase.from('comments').delete().eq('id', commentId)
+    await loadComments()
+  }
+
   async function submitTopLevel(e: React.FormEvent) {
     e.preventDefault()
     if (!newComment.trim() && !commentImage) return
@@ -165,6 +185,7 @@ export function PostPage() {
     )
 
   const isAuthor = user?.id === post.author_id
+  const canModerate = isAuthor || profile?.is_admin
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -178,7 +199,7 @@ export function PostPage() {
         </div>
         <div className="min-w-0 flex-1 p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
-            <Link to={`/?c=${post.category?.slug}`} className="chip" style={{ color: post.category?.color }}>
+            <Link to={`/?c=${post.category?.slug}`} className="chip mono-accent" style={{ color: post.category?.color }}>
               <Icon name={categoryIcon(post.category?.slug)} size={12} /> {post.category?.name}
             </Link>
             <span>·</span>
@@ -186,18 +207,27 @@ export function PostPage() {
               <Avatar src={post.author?.avatar_url} name={post.author?.display_name ?? '?'} size={18} />
               @{post.author?.username}
             </Link>
+            {post.author?.is_admin && <AdminBadge size="sm" />}
             <span>· {timeAgo(post.created_at)} ago</span>
-            {isAuthor && (
-              <button
-                onClick={async () => {
-                  if (!confirm('Delete this post?')) return
-                  await supabase.from('posts').delete().eq('id', post.id)
-                  navigate('/')
-                }}
-                className="ml-auto text-neon-red/70 hover:text-neon-red"
-              >
-                rm -f
-              </button>
+            {post.edited_at && <span className="italic text-ink-faint">· edited</span>}
+            {canModerate && (
+              <span className="ml-auto flex items-center gap-2">
+                {isAuthor && (
+                  <Link to={`/submit/${post.id}`} className="flex items-center gap-1 hover:text-neon-cyan">
+                    <Icon name="edit" size={12} /> edit
+                  </Link>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!confirm('Delete this post?')) return
+                    await supabase.from('posts').delete().eq('id', post.id)
+                    navigate('/')
+                  }}
+                  className="text-neon-red/70 hover:text-neon-red"
+                >
+                  rm -f
+                </button>
+              </span>
             )}
           </div>
 
@@ -285,7 +315,15 @@ export function PostPage() {
             </p>
           ) : (
             comments.map((c) => (
-              <Comment key={c.id} comment={c} depth={0} onReply={addComment} onVoteLocal={voteCommentLocal} />
+              <Comment
+                key={c.id}
+                comment={c}
+                depth={0}
+                onReply={addComment}
+                onVoteLocal={voteCommentLocal}
+                onEdit={editComment}
+                onDelete={deleteComment}
+              />
             ))
           )}
         </div>

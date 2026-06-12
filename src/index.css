@@ -107,9 +107,40 @@
   .card-hover {
     @apply transition-all duration-150 hover:border-term-700 hover:bg-term-850;
   }
+
+  .menu-item {
+    @apply block rounded px-3 py-2 text-sm text-ink-dim hover:bg-term-800 hover:text-ink;
+  }
 }
 
 @layer utilities {
+  /* ── Monochrome theme: neutralize hardcoded accent colors ──
+     Category colors come from the database as inline styles, and a few
+     components hardcode neon hexes (comment depth borders, avatar accents,
+     profile seam). In a grayscale theme we force them back onto the palette
+     so the whole UI stays monochrome. We target tagged elements only, so
+     user content (images/GIFs) and the theme-store previews stay in color. */
+  html[data-mono] .mono-accent {
+    color: rgb(var(--ink-dim)) !important;
+  }
+  html[data-mono] .mono-border {
+    border-color: rgb(var(--term-700)) !important;
+  }
+  /* avatar fallback square: inline border/color accent */
+  html[data-mono] .avatar-accent {
+    border-color: rgb(var(--term-700)) !important;
+    color: rgb(var(--ink-dim)) !important;
+  }
+  /* profile seam bar (inline gradient) -> flat subtle line */
+  html[data-mono] .seam-bar {
+    background-image: none !important;
+    background-color: rgb(var(--term-700)) !important;
+  }
+  /* background page glow tints -> neutral in mono */
+  html[data-mono] body {
+    background-image: none;
+  }
+
   /* CRT scanline overlay */
   .scanlines::after {
     content: '';
