@@ -1,6 +1,6 @@
 [package]
 name = "nyarch"
-version = "0.1.0"
+version = "0.1.1"
 description = "nyarch — a terminal IT forum"
 authors = ["nyarch"]
 edition = "2021"
