@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNotifications } from '@/contexts/NotificationContext'
 import { Icon, categoryIcon } from '@/components/ui/Icon'
 import { Avatar } from '@/components/ui/Avatar'
 import { AdminBadge } from '@/components/ui/AdminBadge'
@@ -14,6 +16,7 @@ import type { Category } from '@/types'
  */
 export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { profile, signOut } = useAuth()
+  const { unread, dmUnread } = useNotifications()
   const navigate = useNavigate()
   const loc = useLocation()
   const [cats, setCats] = useState<Category[]>([])
@@ -37,6 +40,16 @@ export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }, [open])
 
+  // close on Escape
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
   function go(path: string) {
     navigate(path)
     onClose()
@@ -51,21 +64,34 @@ export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => vo
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-[60] lg:hidden">
+  // Render through a portal into <body>. The Navbar <header> uses backdrop-blur,
+  // which creates a containing block that breaks `position: fixed` for any child
+  // — the drawer would otherwise anchor to the 56px-tall header instead of the
+  // viewport, sticking it to the top-left. The portal escapes that header.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true">
       {/* backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/70 animate-fade-in" onClick={onClose} />
 
-      {/* drawer */}
-      <div className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col border-r border-term-700/70 bg-term-950 shadow-glow animate-fade-in">
-        <div className="flex items-center justify-between border-b border-term-700/70 px-3 py-3">
-          <span className="font-mono text-sm text-ink-dim">~/menu</span>
-          <button onClick={onClose} className="text-ink-faint hover:text-neon-red" aria-label="close menu">
+      {/* drawer — solid panel that truly slides in from the left.
+          Regions are absolutely positioned (header top, footer bottom, scroll
+          area fills the gap) so the middle can NEVER collapse to zero height,
+          which flex-1 + min-h-0 can do on some mobile WebKit/Chrome engines. */}
+      <div className="absolute inset-y-0 left-0 w-72 max-w-[85%] border-r border-term-700/70 bg-term-950 shadow-2xl will-change-transform animate-slide-in-left">
+        <div className="absolute inset-x-0 top-0 z-10 flex h-[52px] items-center justify-between border-b border-term-700/70 bg-term-900 px-3">
+          <span className="font-mono text-sm text-ink-dim">
+            <span className="text-neon-green">$</span> ~/menu
+          </span>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded text-ink-faint hover:bg-term-800 hover:text-neon-red"
+            aria-label="close menu"
+          >
             <Icon name="close" size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="absolute inset-x-0 bottom-[116px] top-[52px] overflow-y-auto overscroll-contain">
           {/* search */}
           <form onSubmit={search} className="p-3">
             <div className="relative">
@@ -102,13 +128,15 @@ export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => vo
           {/* nav links */}
           <nav className="px-3 py-1">
             {[
-              { to: '/', icon: 'terminal', label: 'home' },
-              { to: '/notifications', icon: 'mail', label: 'notifications' },
-              { to: '/messages', icon: 'comment', label: 'messages' },
-              { to: '/friends', icon: 'users', label: 'friends' },
-              { to: '/themes', icon: 'palette', label: 'themes' },
-              { to: '/settings', icon: 'gear', label: 'settings' },
-              ...(profile?.is_admin ? [{ to: '/admin', icon: 'shield', label: 'admin' } as const] : []),
+              { to: '/', icon: 'terminal', label: 'home', badge: 0 },
+              { to: '/notifications', icon: 'mail', label: 'notifications', badge: unread },
+              { to: '/messages', icon: 'comment', label: 'messages', badge: dmUnread },
+              { to: '/friends', icon: 'users', label: 'friends', badge: 0 },
+              { to: '/themes', icon: 'palette', label: 'themes', badge: 0 },
+              { to: '/settings', icon: 'gear', label: 'settings', badge: 0 },
+              ...(profile?.is_admin
+                ? [{ to: '/admin', icon: 'shield', label: 'admin', badge: 0 } as const]
+                : []),
             ].map((l) => (
               <Link
                 key={l.to}
@@ -116,7 +144,13 @@ export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => vo
                 onClick={onClose}
                 className="flex items-center gap-2.5 rounded px-2.5 py-2 text-sm text-ink-dim hover:bg-term-800 hover:text-ink"
               >
-                <Icon name={l.icon as never} size={16} /> {l.label}
+                <Icon name={l.icon as never} size={16} />
+                <span className="flex-1">{l.label}</span>
+                {l.badge > 0 && (
+                  <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-neon-red px-1 text-[10px] font-bold text-term-950">
+                    {l.badge > 99 ? '99+' : l.badge}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
@@ -153,7 +187,7 @@ export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => vo
         </div>
 
         {/* footer actions */}
-        <div className="border-t border-term-700/70 p-3">
+        <div className="absolute inset-x-0 bottom-0 z-10 border-t border-term-700/70 bg-term-950 p-3">
           <button
             onClick={() => go('/submit')}
             className="btn btn-primary mb-2 w-full"
@@ -171,6 +205,7 @@ export function MobileMenu({ open, onClose }: { open: boolean; onClose: () => vo
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

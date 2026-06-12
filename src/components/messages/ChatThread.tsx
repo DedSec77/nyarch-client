@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, BUCKET_MESSAGES } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNotifications } from '@/contexts/NotificationContext'
+import { markConversationRead } from '@/lib/api'
 import { useMessages } from '@/hooks/useMessages'
 import type { Conversation, Message } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
@@ -15,17 +17,51 @@ import type { GiphyGif } from '@/lib/giphy'
 
 export function ChatThread({ conversation }: { conversation: Conversation }) {
   const { user } = useAuth()
+  const { refresh } = useNotifications()
   const { messages, loading, appendLocal } = useMessages(conversation.id)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [showGif, setShowGif] = useState(false)
   const [pendingImage, setPendingImage] = useState<{ file: File; preview: string } | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // First paint of a conversation should JUMP to the bottom (no animation);
+  // later messages animate. Tracked per-conversation so switching chats also
+  // jumps instead of smooth-scrolling from the previous position.
+  const didInitialScroll = useRef<string | null>(null)
+
+  function scrollToBottom(behavior: ScrollBehavior) {
+    const el = scrollRef.current
+    if (!el) return
+    // Scroll the container itself to its full height. This is more reliable than
+    // scrollIntoView, which can land short when sibling content (lazy images)
+    // reflows after the scroll begins.
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+    if (loading) return
+    const first = didInitialScroll.current !== conversation.id
+    didInitialScroll.current = conversation.id
+    // Jump instantly on open/switch, smooth for incoming messages. Use rAF so we
+    // measure after the DOM has painted the new messages.
+    requestAnimationFrame(() => scrollToBottom(first ? 'auto' : 'smooth'))
+  }, [messages.length, loading, conversation.id])
+
+  // Opening the chat (and any new message arriving while it's open) marks the
+  // conversation as read and clears its unread badge.
+  useEffect(() => {
+    if (!conversation.id) return
+    let cancelled = false
+    markConversationRead(conversation.id).then(() => {
+      if (!cancelled) refresh()
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id, messages.length])
 
   async function insertMessage(payload: {
     body: string | null
@@ -89,7 +125,7 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
       </div>
 
       {/* messages */}
-      <div className="flex-1 space-y-2 overflow-y-auto bg-term-950/40 p-3">
+      <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto bg-term-950/40 p-3">
         {loading ? (
           <FullSpinner label="messages" />
         ) : messages.length === 0 ? (
@@ -116,6 +152,15 @@ export function ChatThread({ conversation }: { conversation: Conversation }) {
                       alt=""
                       className="mb-1 max-h-64 rounded-md object-contain"
                       loading="lazy"
+                      onLoad={() => {
+                        // An image finishing load grows the thread; keep the view
+                        // pinned to the bottom so we don't stop at "last text".
+                        const el = scrollRef.current
+                        if (!el) return
+                        const nearBottom =
+                          el.scrollHeight - el.scrollTop - el.clientHeight < 200
+                        if (nearBottom) el.scrollTo({ top: el.scrollHeight })
+                      }}
                     />
                   )}
                   {m.body && <p className="whitespace-pre-wrap break-words text-sm text-ink">{m.body}</p>}

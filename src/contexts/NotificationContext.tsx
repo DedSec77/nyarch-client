@@ -9,13 +9,22 @@ import {
 } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthContext'
-import { getNotifications, unreadNotificationCount } from '@/lib/api'
+import {
+  getNotifications,
+  unreadNotificationCount,
+  dmUnreadTotal,
+  dmUnreadByConversation,
+} from '@/lib/api'
 import { pushNotify, ensureNotificationPermission, pushEnabled } from '@/lib/push'
 import { registerServiceWorker, subscribeWebPush } from '@/lib/webpush'
 import type { AppNotification } from '@/types'
 
 interface NotificationState {
   unread: number
+  /** total unread DM messages (for the messages icon badge) */
+  dmUnread: number
+  /** conversationId -> unread count (for per-conversation badges) */
+  dmByConv: Record<string, number>
   refresh: () => void
 }
 
@@ -26,16 +35,26 @@ const POLL_MS = 45_000
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [unread, setUnread] = useState(0)
+  const [dmUnread, setDmUnread] = useState(0)
+  const [dmByConv, setDmByConv] = useState<Record<string, number>>({})
   const lastSeenId = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setInterval>>()
 
   const refresh = useCallback(async () => {
     if (!user) {
       setUnread(0)
+      setDmUnread(0)
+      setDmByConv({})
       return
     }
-    const count = await unreadNotificationCount()
+    const [count, dmTotal, dmMap] = await Promise.all([
+      unreadNotificationCount(),
+      dmUnreadTotal(),
+      dmUnreadByConversation(),
+    ])
     setUnread(count)
+    setDmUnread(dmTotal)
+    setDmByConv(dmMap)
   }, [user])
 
   // Detect brand-new notifications (for push) by polling the latest row id.
@@ -61,6 +80,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) {
       setUnread(0)
+      setDmUnread(0)
+      setDmByConv({})
       lastSeenId.current = null
       return
     }
@@ -112,6 +133,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           if (!data) return
           const preview = msg.body ? msg.body : msg.is_gif ? 'sent a GIF' : msg.image_url ? 'sent a photo' : 'new message'
           pushNotify('nyarch — new message', preview)
+          // bump the unread DM badge immediately
+          refresh()
         },
       )
       .subscribe()
@@ -130,7 +153,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   return (
-    <NotificationContext.Provider value={{ unread, refresh }}>{children}</NotificationContext.Provider>
+    <NotificationContext.Provider value={{ unread, dmUnread, dmByConv, refresh }}>
+      {children}
+    </NotificationContext.Provider>
   )
 }
 

@@ -136,6 +136,14 @@
     background-image: none !important;
     background-color: rgb(var(--term-700)) !important;
   }
+  /* mac-style traffic-light dots: the box-shadow dots are hardcoded amber/
+     green, so force all three onto the grayscale palette in mono themes. */
+  html[data-mono] .tui-dots::before {
+    background-color: rgb(var(--neon-red)) !important;
+    box-shadow:
+      16px 0 0 rgb(var(--neon-amber)),
+      32px 0 0 rgb(var(--neon-green)) !important;
+  }
   /* background page glow tints -> neutral in mono */
   html[data-mono] body {
     background-image: none;

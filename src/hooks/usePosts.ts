@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Post } from '@/types'
 
@@ -60,24 +60,74 @@ export function mapPost(r: RawPostRow): Post {
   }
 }
 
+// How many posts we pull per request. We never fetch the whole table (which
+// would be a disaster at thousands of posts); we fetch one page and load the
+// next page on demand as the user scrolls.
+const PAGE_SIZE = 100
+
 export function usePosts(category: string | null, sort: SortMode) {
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Guards against overlapping fetches (e.g. scroll firing repeatedly) and
+  // against a stale page appending after the filter changed.
+  const reqId = useRef(0)
 
+  const fetchPage = useCallback(
+    async (offset: number, token: number) => {
+      const { data, error } = await supabase.rpc('get_posts', {
+        p_category: category,
+        p_sort: sort,
+        p_limit: PAGE_SIZE,
+        p_offset: offset,
+      })
+      // A newer request superseded this one — discard the result.
+      if (token !== reqId.current) return null
+      if (error) {
+        setError(error.message)
+        return null
+      }
+      const rows = ((data as RawPostRow[]) ?? []).map(mapPost)
+      // Fewer rows than a full page means we've reached the end.
+      setHasMore(rows.length === PAGE_SIZE)
+      return rows
+    },
+    [category, sort],
+  )
+
+  // Initial / filter-change load: reset to the first page.
   const load = useCallback(async () => {
+    const token = ++reqId.current
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase.rpc('get_posts', {
-      p_category: category,
-      p_sort: sort,
-      p_limit: 40,
-      p_offset: 0,
-    })
-    if (error) setError(error.message)
-    else setPosts(((data as RawPostRow[]) ?? []).map(mapPost))
+    setHasMore(true)
+    const rows = await fetchPage(0, token)
+    if (token !== reqId.current) return
+    if (rows) setPosts(rows)
     setLoading(false)
-  }, [category, sort])
+  }, [fetchPage])
+
+  // Append the next page (called when the user nears the end of the list).
+  const loadMore = useCallback(async () => {
+    if (loadingMore || loading || !hasMore) return
+    const token = reqId.current
+    setLoadingMore(true)
+    const rows = await fetchPage(posts.length, token)
+    if (token !== reqId.current) {
+      setLoadingMore(false)
+      return
+    }
+    if (rows && rows.length) {
+      // De-dupe by id in case a new post shifted the offset window.
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p) => p.id))
+        return [...prev, ...rows.filter((r) => !seen.has(r.id))]
+      })
+    }
+    setLoadingMore(false)
+  }, [fetchPage, hasMore, loading, loadingMore, posts.length])
 
   useEffect(() => {
     load()
@@ -96,5 +146,5 @@ export function usePosts(category: string | null, sort: SortMode) {
     )
   }
 
-  return { posts, loading, error, reload: load, applyVote }
+  return { posts, loading, loadingMore, hasMore, error, reload: load, loadMore, applyVote }
 }

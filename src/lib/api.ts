@@ -75,3 +75,40 @@ export async function markNotificationsRead(ids?: string[]): Promise<void> {
     /* ignore */
   }
 }
+
+// ── DM unread counters ──────────────────────────────────────
+
+/** Total unread DM messages for the current user (navbar badge). */
+export async function dmUnreadTotal(): Promise<number> {
+  try {
+    const { data, error } = await supabase.rpc('dm_unread_total')
+    if (error) return 0
+    return Number(data) || 0
+  } catch {
+    return 0
+  }
+}
+
+/** Map of conversationId -> unread count (per-conversation badges). */
+export async function dmUnreadByConversation(): Promise<Record<string, number>> {
+  try {
+    const { data, error } = await supabase.rpc('dm_unread_by_conversation')
+    if (error || !data) return {}
+    const out: Record<string, number> = {}
+    for (const row of data as { conversation_id: string; unread: number }[]) {
+      out[row.conversation_id] = Number(row.unread) || 0
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+/** Mark a conversation as read for the current user. */
+export async function markConversationRead(conversationId: string): Promise<void> {
+  try {
+    await supabase.rpc('mark_conversation_read', { p_conv: conversationId })
+  } catch {
+    /* ignore */
+  }
+}

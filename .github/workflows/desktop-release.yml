@@ -2,6 +2,18 @@ name: Desktop release
 
 # Builds nyarch desktop installers for Windows and Linux.
 # Trigger by pushing a tag like v0.1.0, or run manually from the Actions tab.
+#
+# Bundles produced (see src-tauri/tauri.conf.json "targets"):
+#   Windows : .msi (WiX)  +  .exe (NSIS setup)
+#   Linux   : .deb        +  .AppImage        +  raw ELF binary (uploaded separately)
+#
+# Frontend secrets are NEVER committed. They are injected at build time from
+# GitHub repository secrets (Settings -> Secrets and variables -> Actions):
+#   VITE_SUPABASE_URL        (required)
+#   VITE_SUPABASE_ANON_KEY   (required)
+#   VITE_GIPHY_API_KEY       (optional)
+#   VITE_VAPID_PUBLIC_KEY    (optional - enables Web Push)
+#   VITE_SITE_URL            (optional - email-confirmation redirect target)
 on:
   push:
     tags:
@@ -58,15 +70,32 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Supabase + Giphy keys are baked into the frontend at build time.
-          # Add these as repository secrets (Settings -> Secrets -> Actions).
+          # Supabase + Giphy + Push keys are baked into the frontend at build time.
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_GIPHY_API_KEY: ${{ secrets.VITE_GIPHY_API_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_SITE_URL: ${{ secrets.VITE_SITE_URL }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'nyarch ${{ github.ref_name }}'
-          releaseBody: 'Desktop builds for Windows and Linux. See assets below.'
+          releaseBody: 'Desktop builds for Windows (.msi / .exe) and Linux (.deb / .AppImage / binary). See assets below.'
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # tauri-action uploads the .deb and .AppImage, but not the raw ELF binary.
+      # Attach it to the same release so users who just want the executable can grab it.
+      - name: Upload raw Linux binary to release
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BIN="src-tauri/target/release/nyarch"
+          if [ -f "$BIN" ]; then
+            cp "$BIN" "nyarch-linux-x86_64"
+            gh release upload "${{ github.ref_name }}" "nyarch-linux-x86_64" --clobber
+          else
+            echo "Raw binary not found at $BIN; skipping."
+            ls -la src-tauri/target/release/ || true
+          fi

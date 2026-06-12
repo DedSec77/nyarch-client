@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNotifications } from '@/contexts/NotificationContext'
 import { useConversations } from '@/hooks/useConversations'
 import type { Conversation, Profile } from '@/types'
 import { Avatar } from '@/components/ui/Avatar'
@@ -14,6 +15,7 @@ export function MessagesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { conversations, loading } = useConversations(user?.id)
+  const { dmByConv } = useNotifications()
   const [active, setActive] = useState<Conversation | null>(null)
 
   useEffect(() => {
@@ -74,12 +76,26 @@ export function MessagesPage() {
                 <Avatar src={c.other?.avatar_url} name={c.other?.display_name ?? '?'} size={38} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="truncate text-sm text-ink">{c.other?.display_name}</span>
-                    {c.last_message && (
-                      <span className="shrink-0 text-[10px] text-ink-faint">
-                        {timeAgo(c.last_message.created_at)}
-                      </span>
-                    )}
+                    <span
+                      className={classNames(
+                        'truncate text-sm',
+                        dmByConv[c.id] > 0 ? 'font-semibold text-ink' : 'text-ink',
+                      )}
+                    >
+                      {c.other?.display_name}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {c.last_message && (
+                        <span className="text-[10px] text-ink-faint">
+                          {timeAgo(c.last_message.created_at)}
+                        </span>
+                      )}
+                      {dmByConv[c.id] > 0 && (
+                        <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-neon-red px-1 text-[10px] font-bold text-term-950">
+                          {dmByConv[c.id] > 99 ? '99+' : dmByConv[c.id]}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <p className="truncate text-xs text-ink-faint">
                     {c.last_message

@@ -58,12 +58,17 @@ export default {
           '0%': { backgroundPosition: '0% 50%' },
           '100%': { backgroundPosition: '200% 50%' },
         },
+        'slide-in-left': {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
       },
       animation: {
         blink: 'blink 1s step-end infinite',
         flicker: 'flicker 4s linear infinite',
         scan: 'scan 6s linear infinite',
         'fade-in': 'fade-in 0.2s ease-out',
+        'slide-in-left': 'slide-in-left 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
         'seam-shift': 'seam-shift 6s linear infinite',
       },
     },

@@ -59,6 +59,16 @@ function deleteCookie(name: string) {
 // mirror reasonably small values into cookies; large ones stay in localStorage.
 const COOKIE_SIZE_LIMIT = 3500
 
+// Keys that must NEVER be mirrored to cookies. The Supabase auth token is the
+// big one: it can sit right at the cookie size limit, where the browser
+// silently truncates it. A truncated token is invalid JSON, so Supabase treats
+// the session as absent and logs the user out — the classic "I can log in once
+// then never again" bug. The token lives safely in localStorage (web) and the
+// Tauri store file (desktop); cookies are only a fallback for SMALL settings.
+function isCookieExcluded(key: string): boolean {
+  return key === 'nyarch.auth' || key.startsWith('sb-')
+}
+
 // ── Tauri store (desktop only) ─────────────────────────────
 // Lazily loaded so the web build never bundles Tauri code. We keep a single
 // store file "nyarch.json" in the app data dir. Reads are async, so on startup
@@ -138,7 +148,9 @@ export async function hydrateFromTauriStore(): Promise<void> {
 
 // ── public API ─────────────────────────────────────────────
 export function getItem(key: string): string | null {
-  // Prefer localStorage (fast, larger), fall back to the cookie mirror.
+  // Prefer localStorage (fast, larger). The cookie fallback is only for small
+  // settings; the auth token is localStorage/Tauri-store only, so reading a
+  // stale/truncated cookie can never resurrect a broken session.
   try {
     if (canUseDOM()) {
       const ls = window.localStorage.getItem(key)
@@ -147,6 +159,7 @@ export function getItem(key: string): string | null {
   } catch {
     /* localStorage blocked — fall through to cookie */
   }
+  if (isCookieExcluded(key)) return null
   return readCookie(key)
 }
 
@@ -156,11 +169,12 @@ export function setItem(key: string, value: string): void {
   } catch {
     /* ignore quota / privacy errors */
   }
-  // Mirror to a cookie so the value survives a localStorage wipe (web).
-  if (value.length <= COOKIE_SIZE_LIMIT) {
+  // Mirror to a cookie so the value survives a localStorage wipe (web) — but
+  // never the auth token (see isCookieExcluded above).
+  if (!isCookieExcluded(key) && value.length <= COOKIE_SIZE_LIMIT) {
     writeCookie(key, value)
   } else {
-    // Too large for a cookie; make sure we don't keep a stale small copy.
+    // Too large / excluded; make sure we don't keep a stale small copy.
     deleteCookie(key)
   }
   // Mirror to the Tauri store file so it survives WebView clears (desktop).

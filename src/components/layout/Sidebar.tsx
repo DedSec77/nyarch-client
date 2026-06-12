@@ -17,12 +17,15 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-60 shrink-0 lg:block">
-      <div className="panel sticky top-[4.5rem]">
+      {/* Single sticky column so the info card never slides over the category
+          list while scrolling. */}
+      <div className="sticky top-[4.5rem] space-y-3">
+      <div className="panel">
         <div className="panel-header">
           <span className="tui-dots" />
           <span>~/categories</span>
         </div>
-        <nav className="p-1.5">
+        <nav className="max-h-[calc(100vh-16rem)] overflow-y-auto p-1.5">
           <Link
             to="/"
             className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-sm transition-colors ${
@@ -51,10 +54,11 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <div className="panel mt-3 p-3 text-xs leading-relaxed text-ink-faint">
+      <div className="panel p-3 text-xs leading-relaxed text-ink-faint">
         <p className="text-ink-dim">// nyarch v1.0</p>
         <p className="mt-1">a terminal forum about IT: code, linux, electronics and more.</p>
         <p className="mt-2 text-neon-green/70">$ stay curious_</p>
+      </div>
       </div>
     </aside>
   )

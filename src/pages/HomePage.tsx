@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { CategoryBar } from '@/components/layout/CategoryBar'
 import { PostCard } from '@/components/forum/PostCard'
@@ -18,7 +18,29 @@ export function HomePage() {
   const category = params.get('c')
   const query = params.get('q')?.toLowerCase() ?? ''
   const [sort, setSort] = useState<SortMode>('hot')
-  const { posts, loading, error, applyVote } = usePosts(category, sort)
+  const { posts, loading, loadingMore, hasMore, error, applyVote, loadMore } = usePosts(
+    category,
+    sort,
+  )
+
+  // Infinite scroll: watch a sentinel near the end of the list and pull the
+  // next page when it scrolls into view. Disabled while a search filter is
+  // active (search runs over already-loaded posts).
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (query) return
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore()
+      },
+      // Start fetching a bit before the sentinel is fully visible.
+      { rootMargin: '600px 0px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [query, loadMore, posts.length])
 
   const filtered = useMemo(() => {
     if (!query) return posts
@@ -84,6 +106,26 @@ export function HomePage() {
             {filtered.map((p) => (
               <PostCard key={p.id} post={p} onVote={applyVote} />
             ))}
+
+            {/* infinite-scroll sentinel + state, only when not searching */}
+            {!query && (
+              <div ref={sentinelRef} className="py-4 text-center text-sm text-ink-faint">
+                {loadingMore ? (
+                  <span>
+                    <span className="text-neon-green">$</span> loading more…
+                  </span>
+                ) : hasMore ? (
+                  <button
+                    onClick={() => loadMore()}
+                    className="text-ink-dim hover:text-neon-green"
+                  >
+                    load more posts
+                  </button>
+                ) : (
+                  <span className="text-ink-faint">— end of feed —</span>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
