@@ -10,7 +10,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthContext'
 import { getNotifications, unreadNotificationCount } from '@/lib/api'
-import { pushNotify, ensureNotificationPermission } from '@/lib/push'
+import { pushNotify, ensureNotificationPermission, pushEnabled } from '@/lib/push'
+import { registerServiceWorker, subscribeWebPush } from '@/lib/webpush'
 import type { AppNotification } from '@/types'
 
 interface NotificationState {
@@ -64,6 +65,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       return
     }
     ensureNotificationPermission()
+    // Background Web Push: register the SW and (re)subscribe so notifications
+    // arrive even when the site is closed. No-op on desktop / when unsupported.
+    if (pushEnabled()) {
+      registerServiceWorker()
+        .then(() => subscribeWebPush())
+        .catch(() => {})
+    }
     refresh()
     pollNew()
 

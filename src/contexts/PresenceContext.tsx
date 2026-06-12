@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { useAuth } from './AuthContext'
 import { touchPresence, goOffline } from '@/lib/api'
+import { getItem, setItem } from '@/lib/persist'
 
 type Visibility = 'online' | 'offline'
 
@@ -26,7 +27,7 @@ const LS_KEY = 'nyarch.presence.visibility'
 export function PresenceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [visibility, setVis] = useState<Visibility>(() => {
-    const v = typeof localStorage !== 'undefined' ? localStorage.getItem(LS_KEY) : null
+    const v = getItem(LS_KEY)
     return v === 'offline' ? 'offline' : 'online'
   })
   const timer = useRef<ReturnType<typeof setInterval>>()
@@ -35,7 +36,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
 
   const setVisibility = useCallback((v: Visibility) => {
     setVis(v)
-    if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, v)
+    setItem(LS_KEY, v)
     touchPresence(v)
   }, [])
 

@@ -3,6 +3,8 @@
 // Tailwind colors (see tailwind.config.js) read these variables,
 // so swapping a theme restyles the whole app instantly.
 
+import { getItem, setItem } from './persist'
+
 export interface ThemeColors {
   // background ramp (darkest -> lightest)
   term950: string
@@ -200,7 +202,7 @@ const LS_ACTIVE = 'nyarch.themes.active' // active theme id
 
 export function loadInstalledThemes(): Theme[] {
   try {
-    const raw = localStorage.getItem(LS_INSTALLED)
+    const raw = getItem(LS_INSTALLED)
     if (!raw) return []
     const arr = JSON.parse(raw) as Theme[]
     return Array.isArray(arr) ? arr.filter(isValidTheme) : []
@@ -210,15 +212,15 @@ export function loadInstalledThemes(): Theme[] {
 }
 
 export function saveInstalledThemes(themes: Theme[]) {
-  localStorage.setItem(LS_INSTALLED, JSON.stringify(themes))
+  setItem(LS_INSTALLED, JSON.stringify(themes))
 }
 
 export function getActiveThemeId(): string {
-  return localStorage.getItem(LS_ACTIVE) || THEME_DEFAULT.id
+  return getItem(LS_ACTIVE) || THEME_DEFAULT.id
 }
 
 export function setActiveThemeId(id: string) {
-  localStorage.setItem(LS_ACTIVE, id)
+  setItem(LS_ACTIVE, id)
 }
 
 export function allThemes(): Theme[] {

@@ -5,6 +5,8 @@
 //   is bundled. We import it lazily and feature-detect so the web build never
 //   pulls in Tauri code (and never crashes if the plugin is absent).
 
+import { getItem, setItem } from './persist'
+
 function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
@@ -61,7 +63,7 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 /** Fire a notification. No-op (logs) if permission is missing/unsupported. */
 export async function pushNotify(title: string, body: string): Promise<void> {
   // Respect a user opt-out stored locally.
-  if (typeof localStorage !== 'undefined' && localStorage.getItem('nyarch.push.enabled') === 'false') {
+  if (getItem('nyarch.push.enabled') === 'false') {
     return
   }
 
@@ -94,13 +96,21 @@ export async function pushNotify(title: string, body: string): Promise<void> {
 }
 
 export function pushEnabled(): boolean {
-  if (typeof localStorage === 'undefined') return true
-  return localStorage.getItem('nyarch.push.enabled') !== 'false'
+  return getItem('nyarch.push.enabled') !== 'false'
 }
 
 export function setPushEnabled(on: boolean) {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('nyarch.push.enabled', on ? 'true' : 'false')
+  setItem('nyarch.push.enabled', on ? 'true' : 'false')
+  // Toggle background Web Push (browser) alongside the local opt-out. Imported
+  // lazily so the desktop build never pulls in browser-only push code.
+  if (on) {
+    ensureNotificationPermission()
+    import('./webpush')
+      .then((m) => m.subscribeWebPush())
+      .catch(() => {})
+  } else {
+    import('./webpush')
+      .then((m) => m.unsubscribeWebPush())
+      .catch(() => {})
   }
-  if (on) ensureNotificationPermission()
 }

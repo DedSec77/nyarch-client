@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { persistentStorage } from './persist'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -17,14 +18,15 @@ export const supabase = createClient(
   anonKey ?? 'placeholder-anon-key',
   {
     auth: {
-      // Keep the user signed in across reloads / app restarts. Supabase stores
-      // the session in localStorage by default, which persists in the browser
-      // and in the Tauri WebView, so users don't have to log in every time.
+      // Keep the user signed in across reloads / app restarts. We use a custom
+      // storage that mirrors values into BOTH localStorage and a long-lived
+      // cookie, so the session survives tab closes, reloads, and the Tauri
+      // WebView occasionally clearing localStorage between launches.
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
       storageKey: 'nyarch.auth',
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storage: typeof window !== 'undefined' ? persistentStorage : undefined,
     },
   },
 )

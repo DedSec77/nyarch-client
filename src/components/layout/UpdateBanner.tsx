@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { checkForUpdate, openExternal, type UpdateInfo } from '@/lib/updateCheck'
 import { Icon } from '@/components/ui/Icon'
+import { getItem, setItem } from '@/lib/persist'
 
 /**
  * Desktop-only banner: tells the user when a newer release exists on GitHub.
@@ -15,7 +16,7 @@ export function UpdateBanner() {
     checkForUpdate().then((u) => {
       if (!alive) return
       // don't nag again for a version the user already dismissed
-      if (u && localStorage.getItem('nyarch.update.dismissed') === u.latest) return
+      if (u && getItem('nyarch.update.dismissed') === u.latest) return
       setInfo(u)
     })
     return () => {
@@ -39,7 +40,7 @@ export function UpdateBanner() {
       </button>
       <button
         onClick={() => {
-          localStorage.setItem('nyarch.update.dismissed', info.latest)
+          setItem('nyarch.update.dismissed', info.latest)
           setDismissed(true)
         }}
         className="text-ink-faint hover:text-neon-red"
