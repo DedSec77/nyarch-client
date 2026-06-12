@@ -32,15 +32,28 @@ fn show_main_window(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // On Wayland compositors built on wlroots (Hyprland, Sway, river, ...),
-    // WebKitGTK's DMABUF renderer can fail with "Error 71 (Protocol error)"
-    // or "Failed to create GBM buffer". Disabling it falls back to a renderer
-    // that works everywhere. Only set it if the user has not chosen a value.
+    // ── Linux / WebKitGTK rendering tuning ───────────────────────────────
+    // WebKitGTK can render badly on Linux depending on the GPU/compositor:
+    //   * On some wlroots Wayland compositors (Hyprland, Sway, river) the
+    //     DMABUF renderer fails ("Error 71 (Protocol error)" / GBM buffer).
+    //   * On systems where GPU compositing misbehaves, scrolling and
+    //     animations stutter badly (the "AppImage lag").
+    // We let the user override any of these via real env vars; we only set a
+    // sane default when they haven't. NVIDIA + Wayland is the usual culprit,
+    // so we also nudge GBM/EGL there.
     #[cfg(target_os = "linux")]
     {
-        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
+        let set_default = |k: &str, v: &str| {
+            if std::env::var_os(k).is_none() {
+                std::env::set_var(k, v);
+            }
+        };
+        // Avoid the DMABUF crash on wlroots compositors.
+        set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // If scrolling/animation still stutters, compositing mode is usually
+        // the cause; this forces the more compatible path. Override by exporting
+        // WEBKIT_DISABLE_COMPOSITING_MODE=0 if your GPU handles it well.
+        set_default("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
 
     tauri::Builder::default()
