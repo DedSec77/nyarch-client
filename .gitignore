@@ -1,0 +1,19 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+*.tsbuildinfo
+.vscode/*
+!.vscode/extensions.json
+.netlify
+*.screenshot.png
+260612_*.png
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
